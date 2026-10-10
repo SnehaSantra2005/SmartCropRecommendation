@@ -19,17 +19,17 @@ document.addEventListener("DOMContentLoaded", () => {
     ];
 
     function makeNumber(text) {
-        const digitMap = { "০":"0", "১":"1", "২":"2", "৩":"3", "৪":"4", "৫":"5", "৬":"6", "৭":"7", "৮":"8", "৯":"9" };
+        const digitMap = { "০": "0", "১": "1", "২": "2", "৩": "3", "৪": "4", "৫": "5", "৬": "6", "৭": "7", "৮": "8", "৯": "9" };
         let normalized = String(text).replace(/[০-৯]/g, d => digitMap[d]).replace(/,/g, ".");
         const match = normalized.match(/-?\d+(?:\.\d+)?/);
         if (match) return Number(match[0]);
 
         const bengaliNumbers = {
-            "শূন্য":0, "এক":1, "দুই":2, "তিন":3, "চার":4, "পাঁচ":5,
-            "ছয়":6, "ছয়":6, "সাত":7, "আট":8, "নয়":9, "নয়":9,
-            "দশ":10, "বিশ":20, "তিরিশ":30, "ত্রিশ":30, "চল্লিশ":40,
-            "পঞ্চাশ":50, "ষাট":60, "সত্তর":70, "আশি":80, "নব্বই":90,
-            "একশ":100, "একশো":100, "দেড়":1.5, "দেড়":1.5
+            "শূন্য": 0, "এক": 1, "দুই": 2, "তিন": 3, "চার": 4, "পাঁচ": 5,
+            "ছয়": 6, "ছয়": 6, "সাত": 7, "আট": 8, "নয়": 9, "নয়": 9,
+            "দশ": 10, "বিশ": 20, "তিরিশ": 30, "ত্রিশ": 30, "চল্লিশ": 40,
+            "পঞ্চাশ": 50, "ষাট": 60, "সত্তর": 70, "আশি": 80, "নব্বই": 90,
+            "একশ": 100, "একশো": 100, "দেড়": 1.5, "দেড়": 1.5
         };
         const key = normalized.trim().replace(/[।.!?]/g, "");
         return Object.prototype.hasOwnProperty.call(bengaliNumbers, key) ? bengaliNumbers[key] : NaN;
@@ -169,6 +169,9 @@ document.addEventListener("DOMContentLoaded", () => {
             const output = await response.json();
             if (!response.ok) throw new Error(output.error || "Prediction failed. Please try again.");
             if (!output.recommended_crop) throw new Error("The server did not return a crop recommendation.");
+            if (output.history_saved === false) {
+                console.warn("Crop prediction succeeded, but history was not saved.");
+            }
 
             const crop = String(output.recommended_crop);
             resultOverline.textContent = t("YOUR RECOMMENDED CROP", "আপনার জন্য প্রস্তাবিত ফসল");

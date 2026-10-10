@@ -3,20 +3,35 @@ from flask import Flask, request, jsonify, render_template
 import pandas as pd
 import joblib
 import sqlite3
-from datetime import datetime
+import math
+from datetime import datetime, timezone
 from pathlib import Path
 
 app = Flask(__name__)
 
-# Project paths
+# ---------------- PROJECT PATHS ----------------
+
 BASE_DIR = Path(__file__).resolve().parent
 MODEL_PATH = BASE_DIR / "models" / "crop_model.pkl"
 DATABASE = BASE_DIR / "crop_history.db"
 
-# Load trained machine learning model
-model = joblib.load(MODEL_PATH)
+# ---------------- LOAD ML MODEL ----------------
 
-# Input features required by the model
+try:
+    if not MODEL_PATH.exists():
+        raise FileNotFoundError(
+            f"Model file not found: {MODEL_PATH}"
+        )
+
+    model = joblib.load(MODEL_PATH)
+    app.logger.info("Crop ML model loaded successfully.")
+
+except Exception:
+    app.logger.exception("Failed to load crop ML model.")
+    raise
+
+# ---------------- INPUT FEATURES ----------------
+
 features = [
     "N",
     "P",
@@ -27,7 +42,6 @@ features = [
     "rainfall"
 ]
 
-# Display names for feature importance chart
 feature_names = [
     "Nitrogen",
     "Phosphorus",
@@ -38,11 +52,10 @@ feature_names = [
     "Rainfall"
 ]
 
-
 # ---------------- DATABASE ----------------
 
 def get_connection():
-    conn = sqlite3.connect(DATABASE)
+    conn = sqlite3.connect(DATABASE, timeout=10)
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -50,33 +63,50 @@ def get_connection():
 def init_db():
     conn = get_connection()
 
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS predictions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            nitrogen REAL,
-            phosphorus REAL,
-            potassium REAL,
-            temperature REAL,
-            humidity REAL,
-            ph REAL,
-            rainfall REAL,
-            recommended_crop TEXT,
-            created_at TEXT
-        )
-    """)
+    try:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS predictions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                nitrogen REAL,
+                phosphorus REAL,
+                potassium REAL,
+                temperature REAL,
+                humidity REAL,
+                ph REAL,
+                rainfall REAL,
+                recommended_crop TEXT,
+                created_at TEXT
+            )
+        """)
+        conn.commit()
+        app.logger.info("Prediction database initialized.")
 
-    conn.commit()
-    conn.close()
+    finally:
+        conn.close()
 
 
-init_db()
-
+try:
+    init_db()
+except Exception:
+    # A database initialization failure should be visible in logs.
+    app.logger.exception("Database initialization failed.")
+    raise
 
 # ---------------- HOME PAGE ----------------
 
 @app.route("/")
 def home():
     return render_template("index.html")
+
+
+# ---------------- HEALTH CHECK ----------------
+
+@app.route("/health", methods=["GET"])
+def health():
+    return jsonify({
+        "status": "ok",
+        "model_loaded": model is not None
+    }), 200
 
 
 # ---------------- CROP PREDICTION ----------------
@@ -88,10 +118,9 @@ def predict():
 
         if not isinstance(data, dict):
             return jsonify({
-                "error": "Please provide valid input data."
+                "error": "Please provide valid JSON input."
             }), 400
 
-        # Check all seven input fields
         missing_features = [
             feature for feature in features
             if feature not in data
@@ -100,71 +129,90 @@ def predict():
         if missing_features:
             return jsonify({
                 "error": "Missing input values: "
-                         + ", ".join(missing_features)
+                + ", ".join(missing_features)
             }), 400
 
-        # Convert inputs to numbers
-        values = [float(data[feature]) for feature in features]
-
-        # Reject invalid numeric values
-        if not all(pd.notna(value) for value in values):
+        # Validate all seven numeric inputs.
+        try:
+            values = [float(data[key]) for key in features]
+        except (ValueError, TypeError, OverflowError):
             return jsonify({
-                "error": "Please enter valid numeric values."
+                "error": "All input values must be valid numbers."
             }), 400
 
-        # Prepare input for ML model
+        if not all(math.isfinite(value) for value in values):
+            return jsonify({
+                "error": "Input values must be finite numbers."
+            }), 400
+
         input_data = pd.DataFrame(
             [values],
             columns=features
         )
 
-        # Predict the recommended crop
-        prediction = str(model.predict(input_data)[0])
+        # Step 1: Generate the prediction.
+        try:
+            prediction = str(model.predict(input_data)[0])
+            app.logger.info(
+                "ML prediction successful: %s", prediction
+            )
+        except Exception:
+            app.logger.exception("ML model prediction failed.")
+            return jsonify({
+                "error": "The crop model could not generate a prediction."
+            }), 500
 
-        # Save prediction to database
-        conn = get_connection()
+        # Step 2: Save the prediction.
+        # Return the crop even if history storage fails.
+        history_saved = True
 
         try:
-            conn.execute("""
-                INSERT INTO predictions (
-                    nitrogen,
-                    phosphorus,
-                    potassium,
-                    temperature,
-                    humidity,
-                    ph,
-                    rainfall,
-                    recommended_crop,
-                    created_at
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                *values,
-                prediction,
-                datetime.now().isoformat(timespec="seconds")
-            ))
+            conn = get_connection()
 
-            conn.commit()
-        finally:
-            conn.close()
+            try:
+                conn.execute("""
+                    INSERT INTO predictions (
+                        nitrogen,
+                        phosphorus,
+                        potassium,
+                        temperature,
+                        humidity,
+                        ph,
+                        rainfall,
+                        recommended_crop,
+                        created_at
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    *values,
+                    prediction,
+                    datetime.now(timezone.utc).isoformat(
+                        timespec="seconds"
+                    )
+                ))
 
-        print("Crop recommended:", prediction)
+                conn.commit()
 
-        # Return prediction to frontend
+            finally:
+                conn.close()
+
+        except Exception:
+            history_saved = False
+            app.logger.exception(
+                "Prediction succeeded, but history save failed."
+            )
+
         return jsonify({
             "recommended_crop": prediction,
-            "message": "Crop recommendation generated successfully."
+            "message": "Crop recommendation generated successfully.",
+            "history_saved": history_saved
         }), 200
 
-    except (ValueError, TypeError):
-        return jsonify({
-            "error": "All input values must be valid numbers."
-        }), 400
+    except Exception:
+        app.logger.exception("Unexpected crop prediction error.")
 
-    except Exception as e:
-        app.logger.exception("Crop prediction failed")
         return jsonify({
-            "error": "Prediction failed. Please check the server console."
+            "error": "An unexpected server error occurred."
         }), 500
 
 
@@ -172,20 +220,30 @@ def predict():
 
 @app.route("/history", methods=["GET"])
 def history():
-    conn = get_connection()
-
     try:
-        rows = conn.execute("""
-            SELECT *
-            FROM predictions
-            ORDER BY id DESC
-            LIMIT 50
-        """).fetchall()
+        conn = get_connection()
 
-        return jsonify([dict(row) for row in rows]), 200
+        try:
+            rows = conn.execute("""
+                SELECT *
+                FROM predictions
+                ORDER BY id DESC
+                LIMIT 50
+            """).fetchall()
 
-    finally:
-        conn.close()
+            return jsonify([
+                dict(row) for row in rows
+            ]), 200
+
+        finally:
+            conn.close()
+
+    except Exception:
+        app.logger.exception("Failed to retrieve prediction history.")
+
+        return jsonify({
+            "error": "Prediction history is currently unavailable."
+        }), 500
 
 
 # ---------------- HISTORY PAGE ----------------
@@ -199,7 +257,7 @@ def history_page():
 
 @app.route("/analytics", methods=["GET"])
 def analytics():
-    # Feature importance from the trained model
+    # Feature importance from the trained model.
     importance = getattr(model, "feature_importances_", None)
 
     if importance is None and hasattr(model, "named_steps"):
@@ -224,24 +282,35 @@ def analytics():
             ]
         }
 
-    # Crop recommendation counts from SQLite
-    conn = get_connection()
-
     try:
-        rows = conn.execute("""
-            SELECT recommended_crop, COUNT(*) AS total
-            FROM predictions
-            GROUP BY recommended_crop
-            ORDER BY total DESC
-        """).fetchall()
+        conn = get_connection()
 
-        crop_data = {
-            "labels": [row["recommended_crop"] for row in rows],
-            "values": [row["total"] for row in rows]
-        }
+        try:
+            rows = conn.execute("""
+                SELECT recommended_crop, COUNT(*) AS total
+                FROM predictions
+                GROUP BY recommended_crop
+                ORDER BY total DESC
+            """).fetchall()
 
-    finally:
-        conn.close()
+            crop_data = {
+                "labels": [
+                    row["recommended_crop"] for row in rows
+                ],
+                "values": [
+                    row["total"] for row in rows
+                ]
+            }
+
+        finally:
+            conn.close()
+
+    except Exception:
+        app.logger.exception("Analytics database query failed.")
+
+        return jsonify({
+            "error": "Analytics data is currently unavailable."
+        }), 500
 
     return jsonify({
         "features": feature_data,
@@ -249,7 +318,7 @@ def analytics():
     }), 200
 
 
-# ---------------- RUN APPLICATION ----------------
+# ---------------- RUN LOCALLY ----------------
 
 if __name__ == "__main__":
     app.run(debug=True)

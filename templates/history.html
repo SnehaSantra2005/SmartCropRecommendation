@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#174d35">
+    <title>Prediction History | AgriSense</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&family=Noto+Sans+Bengali:wght@400;500;600;700;800&display=swap"
+        rel="stylesheet">
+
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+
+    <script src="{{ url_for('static', filename='js/language.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='js/history.js') }}" defer></script>
+</head>
+
+<body class="history-page">
+
+    <header class="navbar">
+        <a class="brand" href="/">
+            <span class="brand-icon">✳</span>
+            Agri<span>Sense</span>
+        </a>
+
+        <nav class="nav-links">
+            <a class="nav-link" href="/">Home</a>
+            <a class="nav-link" href="/#recommend">Crop Advisor</a>
+            <a class="nav-link" href="/#analytics">Analytics</a>
+            <a class="nav-link active" href="/history-page">History</a>
+        </nav>
+
+        <div class="nav-tools">
+            <button class="language-toggle" id="languageToggle" type="button" aria-label="Change language">বাংলা</button>
+            <a class="nav-cta" href="/#recommend">
+                New Prediction <span>↗</span>
+            </a>
+        </div>
+    </header>
+
+    <main class="history-main">
+
+        <section class="history-hero">
+            <div class="eyebrow">
+                <span class="live-dot"></span>
+                YOUR FARMING ACTIVITY
+            </div>
+
+            <div class="history-hero-content">
+                <div>
+                    <h1>Every prediction.<br><em>One clear history.</em></h1>
+                    <p>
+                        Review your previous crop recommendations, compare
+                        field parameters and keep track of your predictions.
+                    </p>
+                </div>
+
+                <a href="/#recommend" class="button button-primary">
+                    + New Prediction
+                </a>
+            </div>
+
+            <div class="history-hero-bottom">
+                <span>✳ AGRISENSE RECORDS</span>
+                <span>YOUR LAST 50 PREDICTIONS</span>
+            </div>
+        </section>
+
+        <!-- SUMMARY CARDS -->
+        <section class="history-stats">
+
+            <article class="history-stat-card">
+                <div class="history-stat-top">
+                    <span>Total predictions</span>
+                    <span class="history-stat-icon">↗</span>
+                </div>
+                <h2 id="totalPredictions">—</h2>
+                <p>Recorded recommendations</p>
+            </article>
+
+            <article class="history-stat-card">
+                <div class="history-stat-top">
+                    <span>Unique crops</span>
+                    <span class="history-stat-icon">♧</span>
+                </div>
+                <h2 id="uniqueCrops">—</h2>
+                <p>Different crops recommended</p>
+            </article>
+
+            <article class="history-stat-card">
+                <div class="history-stat-top">
+                    <span>Latest crop</span>
+                    <span class="history-stat-icon">✳</span>
+                </div>
+                <h2 class="latest-crop" id="latestCrop">—</h2>
+                <p>Most recent recommendation</p>
+            </article>
+
+        </section>
+
+        <!-- HISTORY TABLE -->
+        <section class="history-table-card">
+
+            <div class="history-table-heading">
+                <div>
+                    <span class="chart-kicker">PREDICTION ARCHIVE</span>
+                    <h2>Your field records</h2>
+                    <p>Review the inputs and results of your previous predictions.</p>
+                </div>
+
+                <button type="button" class="history-refresh" id="refreshHistory">
+                    ↻ Refresh
+                </button>
+            </div>
+
+            <div class="history-toolbar">
+                <div class="history-search">
+                    <span>⌕</span>
+                    <input type="search" id="historySearch" placeholder="Search crop name..."
+                        aria-label="Search crop name">
+                </div>
+
+                <span class="history-count" id="historyCount">
+                    Loading records...
+                </span>
+            </div>
+
+            <div id="historyMessage" class="history-message" role="status">
+                Loading your prediction history...
+            </div>
+
+            <div class="history-table-wrap" id="historyTableWrap" hidden>
+                <table class="history-table">
+                    <thead>
+                        <tr>
+                            <th>Crop</th>
+                            <th>N</th>
+                            <th>P</th>
+                            <th>K</th>
+                            <th>Temperature</th>
+                            <th>Humidity</th>
+                            <th>pH</th>
+                            <th>Rainfall</th>
+                            <th>Date &amp; time</th>
+                        </tr>
+                    </thead>
+
+                    <tbody id="historyTableBody"></tbody>
+                </table>
+            </div>
+
+            <div class="history-empty" id="historyEmpty" hidden>
+                <div class="history-empty-icon">🌱</div>
+                <h3>No matching records</h3>
+                <p>Try another crop name or make a new crop prediction.</p>
+                <a href="/#recommend" class="button button-primary">
+                    Make a Prediction ↗
+                </a>
+            </div>
+
+            <div class="history-footer">
+                <span>✳ Data stored in your local SQLite database</span>
+                <a href="/#analytics">Explore analytics ↗</a>
+            </div>
+
+        </section>
+
+        <div class="history-disclaimer">
+            <span>ⓘ</span>
+            Recommendations are machine-learning predictions, not guarantees
+            of crop yield or profitability.
+        </div>
+
+    </main>
+
+    <footer class="footer">
+        <a class="brand footer-brand" href="/">
+            <span class="brand-icon">✳</span>
+            Agri<span>Sense</span>
+        </a>
+        <p>Smart insights for a growing world.</p>
+        <span class="footer-copy">
+            AI-powered crop recommendation · Academic project
+        </span>
+    </footer>
+
+</body>
+
+</html>
